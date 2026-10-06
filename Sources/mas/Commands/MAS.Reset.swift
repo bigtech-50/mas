@@ -1,0 +1,95 @@
+//
+// MAS.Reset.swift
+// mas
+//
+// Copyright © 2016 mas-cli. All rights reserved.
+//
+
+private import AppKit
+internal import ArgumentParser
+private import CommerceKit
+private import Darwin
+private import Foundation
+
+extension MAS {
+	/// Mimics the "Reset Application" command in the App Store debug menu, which
+	/// performs the following steps:
+	///
+	/// - `killall Dock`
+	/// - `killall storeagent` (`storeagent` no longer exists)
+	/// - deletes the `com.apple.appstore` download folder
+	/// - clears cookies (appears to be a no-op)
+	///
+	/// As `storeagent` no longer exists, terminates all processes known to be
+	/// associated with the App Store.
+	struct Reset: ParsableCommand {
+		static let configuration = CommandConfiguration(
+			abstract: "Reset App Store processes & clear cached App Store downloads",
+		)
+
+		func run() {
+			for bundleID in ["com.apple.dock", "com.apple.storeuid"] {
+				for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) where !app.terminate() {
+					printer.warning("Failed to terminate app with bundle ID", bundleID)
+					if !app.forceTerminate() {
+						printer.error("Failed to force terminate app with bundle ID", bundleID)
+					}
+				}
+			}
+
+			let executablePathSet = Set(
+				[
+					"/System/Library/Frameworks/StoreKit.framework/Support/storekitagent",
+					"/System/Library/PrivateFrameworks/AppStoreComponents.framework/Support/appstorecomponentsd",
+					"/System/Library/PrivateFrameworks/AppStoreDaemon.framework/Support/appstoreagent",
+					"/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices"
+						+ "/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService",
+					"/System/Library/PrivateFrameworks/CommerceKit.framework/Versions/A/Resources/storeaccountd",
+					"/System/Library/PrivateFrameworks/CommerceKit.framework/Versions/A/Resources/storeassetd",
+					"/System/Library/PrivateFrameworks/CommerceKit.framework/Versions/A/Resources/storedownloadd",
+					"/System/Library/PrivateFrameworks/CommerceKit.framework/Versions/A/Resources/storeinstalld",
+					"/System/Library/PrivateFrameworks/CommerceKit.framework/Versions/A/Resources/storelegacy",
+				],
+			)
+
+			var processListMIB = [CTL_KERN, KERN_PROC, KERN_PROC_ALL]
+			var length = 0
+			guard unsafe sysctl(&processListMIB, u_int(processListMIB.count), nil, &length, nil, 0) == 0 else {
+				printer.error("Failed to get process list length")
+				return
+			}
+
+			var kinfoProcs = unsafe Array(repeating: unsafe kinfo_proc(), count: length / MemoryLayout<kinfo_proc>.stride)
+			guard unsafe sysctl(&processListMIB, u_int(processListMIB.count), &kinfoProcs, &length, nil, 0) == 0 else {
+				printer.error("Failed to get process list")
+				return
+			}
+
+			unsafe withUnsafeTemporaryAllocation(of: CChar.self, capacity: .init(PATH_MAX)) { buffer in
+				guard let baseAddress = buffer.baseAddress else {
+					return
+				}
+
+				for unsafe pid in unsafe kinfoProcs.lazy.map(unsafe \.kp_proc.p_pid) {
+					if
+						unsafe proc_pidpath(pid, unsafe baseAddress, .init(buffer.count)) > 0,
+						let executablePath = unsafe String(validatingCString: unsafe baseAddress),
+						executablePathSet.contains(executablePath)
+					{
+						let exitStatus = kill(pid, SIGTERM)
+						if exitStatus != 0 {
+							printer.error("Failed to terminate", executablePath, "getting exit status", exitStatus, "for pid", pid)
+						}
+					}
+				}
+			}
+
+			let folder = CKDownloadDirectory(nil)
+			do {
+				try FileManager.default.removeItem(atPath: folder)
+			} catch {
+				printer.error("Failed to delete download folder", folder, error: error)
+			}
+		}
+	}
+}

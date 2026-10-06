@@ -1,0 +1,18 @@
+#!/bin/zsh -Ndefgku
+#
+# Scripts/setup_workflow_repo
+# mas
+#
+# Copyright © 2025 mas-cli. All rights reserved.
+#
+# Sets up the repo for use in a GitHub workflow.
+#
+
+. "${0:A:h}/_setup_script"
+
+# shellcheck disable=SC2066
+for branch in\
+	"${(f)"$(git for-each-ref refs/remotes/origin --format='%(if)%(symref)%(then)%(else)%(refname:strip=-1)%(end)')":#}"
+do
+	git branch --track "${branch}" "origin/${branch}" >/dev/null 2>&1 || true
+done

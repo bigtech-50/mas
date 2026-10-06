@@ -1,0 +1,28 @@
+#!/bin/zsh -Ndefgku
+#
+# Scripts/version
+# mas
+#
+# Copyright © 2025 mas-cli. All rights reserved.
+#
+# Outputs the mas version.
+#
+
+. "${0:A:h}/_setup_script"
+
+branch="${"$(git rev-parse --abbrev-ref HEAD)":/main}"
+if [[ "${branch}" = HEAD ]]; then
+	if ! git show-ref --verify --quiet refs/heads/main || git merge-base --is-ancestor HEAD main; then
+		readonly branch=
+	else
+		readonly\
+			branch="${"${"${(fnO)"$(git branch --contains HEAD --format '%(ahead-behind:HEAD) %(refname:short)')"}"[1]}"##* }"
+	fi
+else
+	readonly branch
+fi
+
+printf $'%s%s%s\n'\
+	"${"$(git describe --tags 2>/dev/null)"#v}"\
+	"${branch:+"-${branch}"}"\
+	"${"$(git diff-index HEAD --;git ls-files --exclude-standard --others)":+"${MAS_DIRTY_INDICATOR-+}"}"

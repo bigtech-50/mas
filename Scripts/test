@@ -1,0 +1,17 @@
+#!/bin/zsh -Ndefgku
+#
+# Scripts/test
+# mas
+#
+# Copyright © 2025 mas-cli. All rights reserved.
+#
+# Runs mas tests.
+#
+
+. "${0:A:h}/_setup_script"
+
+print_notice '🧪 Testing' "${@}"
+
+export -r MAS_DISTRIBUTION=test
+
+swift test --disable-xctest -q "${@}"

@@ -1,0 +1,31 @@
+#!/bin/zsh -Ndefgku
+#
+# Scripts/release_cancel
+# mas
+#
+# Copyright © 2025 mas-cli. All rights reserved.
+#
+# Cancels a GitHub draft release.
+#
+# Usage: release_cancel <draft-release-tag>
+#
+
+. "${0:A:h}/_setup_script"
+
+readonly tag="${1}"
+
+export MAS_VERSION="${tag#v}"
+print_notice '❌ Canceling release for' "${@}"
+unset MAS_VERSION
+
+bump_url="$(gh release -R mas-cli/mas download "${tag}" -p bump.url -O - 2>/dev/null || true)"
+readonly bump_url
+if [[ -n "${bump_url}" ]]; then
+	printf $'\n'
+	gh pr close "${bump_url}" -d
+	printf $'\n'
+else
+	printf $'\nNo tap formula bump PR URL found for draft release tag %s\n\n' "${tag}"
+fi
+
+gh release -R mas-cli/mas delete "${tag}" --cleanup-tag -y

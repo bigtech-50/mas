@@ -1,0 +1,62 @@
+#!/bin/zsh -Ndefgku
+#
+# Scripts/release_start
+# mas
+#
+# Copyright © 2025 mas-cli. All rights reserved.
+#
+# Starts the release process by creating & pushing a signed annotated version tag to the GitHub mas-cli/mas repo.
+#
+# Usage: release_start <version-tag-name> <version-title> [<version-ref>]
+#
+# <version-tag-name> must match the following zsh pattern:
+#
+# ^v[[:digit:]]+(\.[[:digit:]]+)*(-(alpha|beta|rc)\.[[:digit:]]+)?$
+#
+# <version-title> may contain at most 64 characters, which cannot be control characters
+#
+# <version-ref> if optional value supplied, must be on the main branch; defaults to HEAD
+#
+
+. "${0:A:h}/_setup_script"
+
+readonly tag="${1}"
+readonly title="${2}"
+readonly ref="${3:-HEAD}"
+
+export MAS_VERSION="${tag#v}"
+print_notice '🚀 Starting release for' "${@}"
+unset MAS_VERSION
+printf $'\n'
+
+if [[ ! "${tag}" =~ '^v[[:digit:]]+(\.[[:digit:]]+)*(-(alpha|beta|rc)\.[[:digit:]]+)?$' ]]; then
+	printf $'%s is not a valid version tag\n' "${tag}" >&2
+	exit 1
+fi
+
+if (("${#title}" > 64)); then
+	printf $'\'%s\' is too long for a version title, which cannot contain more than 64 characters\n' "${(q)title}" >&2
+	exit 2
+fi
+
+if [[ "${title}" =~ [[:cntrl:]] ]]; then
+	printf $'\'%s\' is not a valid version title, which cannot contain control characters\n' "${(q)title}" >&2
+	exit 3
+fi
+
+# shellcheck disable=SC1027,SC1036,SC1072,SC1073
+if [[ "${title}" = (' '*|*' ') ]]; then
+	printf $'\'%s\' is not a valid version title, which cannot begin or end with a space\n' "${(q)title}" >&2
+	exit 4
+fi
+
+if ! git merge-base --is-ancestor "${ref}" upstream/main; then
+	printf $'%s is not a valid reference for a version, which must be on the upstream/main branch\n' "${ref}" >&2
+	exit 5
+fi
+
+git tag -s "${tag}" -m "${title}" "${ref}"
+
+printf $'Created version tag %s with title \'%s\' for reference %s\n\n' "${tag}" "${(q)title}" "${ref}"
+
+git push upstream tag "${tag}"
